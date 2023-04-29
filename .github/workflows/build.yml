@@ -1,10 +1,13 @@
 name: Build
+
 on:
   push:
-    paths:
-      - '.github/workflows/build.yml'
-  schedule:
-    - cron: '0 16 * * *'
+    branches:
+      - 'main'
+  pull_request:
+    branches:
+      - 'main'
+
 env:
   GITHUB_USER: "${{secrets.USERNAME}}"
   GITHUB_EMAIL: "${{secrets.EMAIL}}"
@@ -96,11 +99,11 @@ jobs:
       run: |
         MUSL_SOURCE=$(find ${SOURCE_DIR} -maxdepth 1 -type d -name "musl*")
         cd ${MUSL_SOURCE}
-        make ARCH="aarch64" prefix="/usr" DESTDIR="${MSYSROOT}" install-headers -j$(nproc --all)
+        make ARCH="arm" prefix="/usr" DESTDIR="${MSYSROOT}" install-headers -j$(nproc --all)
     - name: Configure binutils
       run: |
         cd ${BUILD_DIR}/build-binutils
-        ${SOURCE_DIR}/binutils/configure --target="aarch64-linux-musl" --prefix="${MPREFIX}" --with-sysroot="${MSYSROOT}" --disable-multilib --disable-werro --with-gmp="${OUTPUT_DIR}/gmp" --with-mpc="${OUTPUT_DIR}/mpc" --with-mpfr="${OUTPUT_DIR}/mpfr" --with-isl="${OUTPUT_DIR}/isl"
+        ${SOURCE_DIR}/binutils/configure --target="arm-linux-musleabi" --prefix="${MPREFIX}" --with-sysroot="${MSYSROOT}" --disable-multilib --disable-werro --with-gmp="${OUTPUT_DIR}/gmp" --with-mpc="${OUTPUT_DIR}/mpc" --with-mpfr="${OUTPUT_DIR}/mpfr" --with-isl="${OUTPUT_DIR}/isl"
     - name: Make binutils
       run: |
         cd ${BUILD_DIR}/build-binutils
@@ -109,7 +112,7 @@ jobs:
     - name: Configure gcc
       run: |
         cd ${BUILD_DIR}/build-gcc
-        ${SOURCE_DIR}/gcc/configure --target="aarch64-linux-musl" --prefix="${MPREFIX}" --with-sysroot="${MSYSROOT}" --enable-languages="c,c++" --disable-multilib --disable-bootstrap --disable-libsanitizer --disable-werror --enable-initfini-array --with-arch=armv8-a --with-abi=lp64 --enable-fix-cortex-a53-835769 --enable-fix-cortex-a53-843419 --with-gmp="${OUTPUT_DIR}/gmp" --with-mpc="${OUTPUT_DIR}/mpc" --with-mpfr="${OUTPUT_DIR}/mpfr" --with-isl="${OUTPUT_DIR}/isl"
+        ${SOURCE_DIR}/gcc/configure --target="arm-linux-musleabi" --prefix="${MPREFIX}" --with-sysroot="${MSYSROOT}" --enable-languages="c,c++" --disable-multilib --disable-bootstrap --disable-libsanitizer --disable-werror --enable-initfini-array --with-arch=armv8-a --with-abi=lp64 --enable-fix-cortex-a53-835769 --enable-fix-cortex-a53-843419 --with-gmp="${OUTPUT_DIR}/gmp" --with-mpc="${OUTPUT_DIR}/mpc" --with-mpfr="${OUTPUT_DIR}/mpfr" --with-isl="${OUTPUT_DIR}/isl"
     - name: Make gcc (compiler)
       run: |
         mkdir -vp ${MSYSROOT}/usr/include
@@ -125,23 +128,23 @@ jobs:
       run: |
         cd ${BUILD_DIR}/build-musl
         MUSL_SOURCE=$(find ${SOURCE_DIR} -maxdepth 1 -type d -name "musl*")
-        LIBCC_DIR=$(find ${MPREFIX}/lib/gcc/aarch64-linux-musl -maxdepth 1 -type d -name "[0-9]*")
-        ARCH="aarch64"
-        CC="aarch64-linux-musl-gcc"
-        CROSS_COMPILE="aarch64-linux-musl-"
+        LIBCC_DIR=$(find ${MPREFIX}/lib/gcc/arm-linux-musleabi -maxdepth 1 -type d -name "[0-9]*")
+        ARCH="arm"
+        CC="arm-linux-musleabi-gcc"
+        CROSS_COMPILE="arm-linux-musleabi-"
         LIBCC="${LIBCC_DIR}/libgcc.a"
-        ${MUSL_SOURCE}/configure --host="aarch64-linux-musl" --prefix="/usr"
+        ${MUSL_SOURCE}/configure --host="arm-linux-musleabi" --prefix="/usr"
     - name: Make musl
       run: |
         cd ${BUILD_DIR}/build-musl
-        make AR="aarch64-linux-musl-ar" RANLIB="aarch64-linux-musl-ranlib" -j$(nproc --all)
-        make AR="aarch64-linux-musl-ar" RANLIB="aarch64-linux-musl-ranlib" DESTDIR="${MSYSROOT}" install -j$(nproc --all)
-        rm -vf ${MSYSROOT}/lib/ld-musl-aarch64.so.1
-        cp -avf ${MSYSROOT}/usr/lib/libc.so ${MSYSROOT}/lib/ld-musl-aarch64.so.1
+        make AR="arm-linux-musleabi-ar" RANLIB="arm-linux-musleabi-ranlib" -j$(nproc --all)
+        make AR="arm-linux-musleabi-ar" RANLIB="arm-linux-musleabi-ranlib" DESTDIR="${MSYSROOT}" install -j$(nproc --all)
+        rm -vf ${MSYSROOT}/lib/ld-musl-arm.so.1
+        cp -avf ${MSYSROOT}/usr/lib/libc.so ${MSYSROOT}/lib/ld-musl-arm.so.1
     - name: Make gcc (libgcc-shared)
       run: |
         cd ${BUILD_DIR}/build-gcc
-        make -C aarch64-linux-musl/libgcc distclean -j$(nproc --all)
+        make -C arm-linux-musleabi/libgcc distclean -j$(nproc --all)
         make enable_shared=yes all-target-libgcc -j$(nproc --all)
         make install-strip-target-libgcc -j$(nproc --all)
     - name: Make gcc (libstdc++-v3)
@@ -158,21 +161,21 @@ jobs:
       run: |
         LINUX_SOURCE=$(find ${SOURCE_DIR} -maxdepth 1 -type d -name "linux*")
         cd ${LINUX_SOURCE}
-        make ARCH=arm64 mrproper -j$(nproc --all)
-        make O="${OUTPUT_DIR}/linux" ARCH=arm64 INSTALL_HDR_PATH="${MSYSROOT}/usr" headers_install -j$(nproc --all)
+        make ARCH=arm mrproper -j$(nproc --all)
+        make O="${OUTPUT_DIR}/linux" ARCH=arm INSTALL_HDR_PATH="${MSYSROOT}/usr" headers_install -j$(nproc --all)
     - name: Merge directory
       run: |
-        cp -avf ${MSYSROOT}/lib ${MSYSROOT}/usr/* ${MPREFIX}/aarch64-linux-musl
+        cp -avf ${MSYSROOT}/lib ${MSYSROOT}/usr/* ${MPREFIX}/arm-linux-musleabi
     - name: Push
       run: |
         git config --global user.name "${GITHUB_USER}"
         git config --global user.email "${GITHUB_EMAIL}"
         mkdir -vp /home/runner/work/git_clone
-        git clone https://"${GITHUB_USER}":"${GITHUB_TOKEN}"@github.com/chase535/aarch64-linux-musl-gcc /home/runner/work/git_clone -b main --depth=1
+        git clone https://"${GITHUB_USER}":"${GITHUB_TOKEN}"@github.com/chase535/arm-linux-musleabi-gcc /home/runner/work/git_clone -b main --depth=1
         cd /home/runner/work/git_clone
         OLD_FILES=`find . -maxdepth 1 -not \( -type d -name "." -o -type d -name ".git" -o -type d -name ".github" -o -type f -name "README.md" \)`
         [ -n "${OLD_FILES}" ] && git rm -rf ${OLD_FILES} && git commit -as -m "Delete old files"
         cp -avf ${MPREFIX}/* .
         git add . -f
-        git commit -as -m "$(cat /tmp/start_time)" -m "$(./bin/aarch64-linux-musl-gcc --version)"
+        git commit -as -m "$(cat /tmp/start_time)" -m "$(./bin/arm-linux-musleabi-gcc --version)"
         git push origin main -f
